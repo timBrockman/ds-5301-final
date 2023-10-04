@@ -1,0 +1,339 @@
+---
+title: 'NYPD Project: The Best Time to Get Shot'
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r strange_errors, echo=FALSE}
+# this block seems to suppress some strange markdown parsing errors during knit 
+# it should be ignored
+m <- 2
+```
+
+What was __the best time to get shot__ in City That Never Sleeps? We are about to
+find the answer by looking at the NYPD's data, and it might not be when you
+would expect.
+
+### We will discover when you were most likely to:
+- Get shot
+- Not get shot
+- Die as a result
+- Survive getting shot
+
+
+### This project is broken down into 4 steps.
+1. Get the data
+2. Convert the data into something useful
+3. Present the data
+4. Identify possible biases
+
+
+## Step 1: Import data in a way that's reproducible
+
+1. Install all the packages used in this project and load the corresponding libraries
+2. Use the tidyverse package to read the csv directly from the source
+3. The data source is provided by the City of New York in the data section of their web site
+4. The exact URL is currently `https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD`
+
+
+```{r get_nypd_data, echo=FALSE}
+install.packages(c("tidyverse", "scales", "leaflet","leaflet.extras","leaflet.providers"), repos = "http://cran.us.r-project.org")
+library(leaflet)
+library(leaflet.extras)
+library(leaflet.providers)
+library(tidyverse)
+library(scales)
+nypd_data <- read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+
+```
+
+---
+
+## Step 2: Tidy and Transform your data
+
+1. Filter out rows with UNKNOWN data or missing location information
+2. Select only the columns used in this analysis
+3. Create additional columns converting existing data into useful numeric data for:
+  - STATISTICAL_MURDER_FLAG
+  - OCCUR_TIME
+  - OCCUR_DATE
+4. create summaries of the used data
+5. group and split the data by months and hours for further examination
+6. calculate the mean of each category
+7. display the summary tables of data
+
+
+```{r data_wrangling, echo=FALSE}
+# summary(nypd_data)
+
+nypd_data %>%
+    filter(PERP_RACE != "UNKNOWN" & VIC_RACE != "UNKNOWN" & Latitude & Longitude) %>%
+    select(OCCUR_DATE, OCCUR_TIME, STATISTICAL_MURDER_FLAG, Latitude, Longitude)-> nypd_filtered
+
+nypd_filtered %>%
+  mutate(MF = as.numeric(STATISTICAL_MURDER_FLAG))%>%
+  mutate(hour_occured = hour(OCCUR_TIME)) %>%
+  mutate(month_occured = month(mdy(OCCUR_DATE))) %>%
+  mutate(year_occured = format_ISO8601(mdy(OCCUR_DATE), precision = "y")) %>%
+  mutate(year_month_occured = format_ISO8601(mdy(OCCUR_DATE), precision="ym")) -> hr_mo
+
+# for year summary  
+hr_mo %>% 
+  group_by(year_occured) -> gyr
+
+gyr %>%
+  summarise(shootings=n(),murders=sum(MF))%>%
+  mutate(murder_rate= murders/shootings)->sum_gyr
+
+# for year_month summary  
+hr_mo %>% 
+  group_by(year_month_occured) -> gym
+
+gym %>%
+  summarise(shootings=n(),murders=sum(MF), month_occured, year_occured)%>%
+  mutate(murder_rate= murders/shootings)->sum_gym
+#ts_gym <- ts(sum_gym, frequency = 12)
+#print(ts_gym)
+
+# for monthly summary
+hr_mo %>% 
+  group_by(month_occured) -> gmo
+
+gmo %>%
+  summarise(shootings=n(),murders=sum(MF))%>%
+  mutate(murder_rate= murders/shootings)->sum_gmo
+
+# for hourly summary
+hr_mo %>%
+  group_by(hour_occured) -> ghr
+
+ghr %>%
+  summarise(shootings=n(),murders=sum(MF))%>%
+  mutate(murder_rate= murders/shootings)->sum_ghr
+
+
+# for geographical distribution
+gmo %>%
+  group_split(.keep=TRUE) -> mo_nested
+
+ghr %>% 
+  group_split(.keep=TRUE)-> hr_nested
+
+# Calculate the mean of each category
+shoot_mean_ghr <- mean(sum_ghr$shootings)
+shoot_mean_gmo <- mean(sum_gmo$shootings)
+murder_mean_ghr <- mean(sum_ghr$murders)
+murder_mean_gmo <- mean(sum_gmo$murders)
+mr_mean_ghr <- mean(sum_ghr$murder_rate)
+mr_mean_gmo <- mean(sum_gmo$murder_rate)
+
+# Display summary tables
+
+```
+__The Summary Table by Year__
+```{r Print_Sumary_Year, echo=FALSE}
+head(sum_gyr)
+```
+
+__The Summary Table by Year and Month__
+```{r Print_Sumary_Year_Month, echo=FALSE}
+head(sum_gym)
+```
+__The Summary Table grouped by Month__
+```{r Print_Summary_Month, echo=FALSE}
+head(sum_gmo)
+```
+__The Summary Table grouped by Hour__
+```{r Print_Summary_Hour, echo=FALSE}
+head(sum_ghr)
+```
+
+---
+
+## Step 3: Add Model, Visualizations, and Analysis
+
+### Model
+For a statistical model I'm used Local Polynomial Regression (called 'loess' in ggplot). The benefit is it can make a smooth curve that reflects the data without having to iterate over different degree polynomials and other formulas to best fit the data. The cost is it can be computationally intensive.
+
+
+### Monthly Shootings
+
+In order to discover if there is a monthly trend, I plotted a linear curve using local polynomial regression.
+
+```{r Monthly_Shooting_Model, echo=FALSE}
+ggplot(sum_gym, aes(x=month_occured, y=shootings)) + geom_point() +geom_smooth(method = 'loess', formula = y~x)
+```
+To amplify the curve I grouped the yearly data by month.
+
+```{r Grouped_Monthly_Shooting_Model, echo=FALSE}
+ggplot(sum_gmo, aes(x=month_occured, y=shootings)) + geom_point() + geom_smooth(method = 'loess', formula = y~x)
+#stat_smooth(method ='lm', formula = y ~ poly(x, 4))
+```
+The monthly shootings are the lowest in February and escalate through the summer.
+
+```{r Monthly_Shooting_Graph, echo=FALSE}
+
+ggplot(hr_mo, aes(x=month_occured, fill=STATISTICAL_MURDER_FLAG))+geom_histogram(bins=12)+
+  geom_hline(yintercept = shoot_mean_gmo, color="blue")+
+  geom_hline(yintercept = murder_mean_gmo, color="blue")+
+  scale_y_continuous(breaks=sort(c(seq(min(sum_gmo$shootings),max(sum_gmo$shootings), length.out=5),murder_mean_gmo, shoot_mean_gmo)))
+```
+At a glance the murders seem to follow that trend.
+
+### Monthly Murder Rate
+
+The rate of shootings to murders are pretty steady throughout the year. March, June, July, and August have slightly lower rate of shootings that result in Murder. May and September are slightly higher than the mean of .2215 and December is the highest rate of shootings to murders at .249.
+
+```{r Monthly_MR_Graph, echo=FALSE}
+ggplot(sum_gmo, aes(x=month_occured, y=murder_rate, fill=murder_rate))+
+  geom_col()+
+  scale_fill_viridis_c(option="turbo")+
+  geom_hline(yintercept = mr_mean_gmo, color="blue")+
+  scale_y_continuous(breaks=sort(c(seq(min(sum_gmo$murder_rate),max(sum_gmo$murder_rate), length.out=3),mr_mean_gmo)))
+```
+If you were shot in March or June, you were least likely to die. If you were shot in December you were most likely to die. While the murder rate didn't fluctuate dramatically, it also didn't follow the shooting volume.
+
+### Hourly Shootings
+
+With hourly shootings we grouped the data by hour and plotted a curve of the shootings using local polynomial regression (or Loess). Again we notice a pretty smooth curve in the data.
+
+```{r Grouped_Hourly_Shooting_Model, echo=FALSE}
+ggplot(sum_ghr, aes(x=hour_occured, y=shootings))+geom_point()+geom_smooth(method = 'loess', formula = 'y~x')
+```
+
+
+The number of shootings per hour is the lowest between 8:00-9:00am and escalates until midnight. From midnight it stays above average until 6-7 where it begins to drop rapidly. The number of murders mostly follow that trend as well.
+
+```{r Hourly_Shooting_Graph, echo=FALSE}
+ggplot(hr_mo, aes(x=hour_occured, fill=STATISTICAL_MURDER_FLAG))+geom_histogram(bins=24)+
+  geom_hline(yintercept = shoot_mean_ghr, color="blue")+
+  geom_hline(yintercept = murder_mean_ghr, color="blue")+
+  scale_y_continuous(breaks=sort(c(seq(min(sum_ghr$shootings),max(sum_ghr$shootings), length.out=5),murder_mean_ghr, shoot_mean_ghr)))
+```
+
+### Hourly Murder Rate
+
+The hours with the highest murder rate start at 5:00 AM, 6:00 AM, 7:00 AM, and 8:00 AM, with 7:00 AM - 8:00 AM having the highest rate of murders at .296 in spite of the low shooting volume. The lowest rate of murders happens between 4:00 PM - 5:00 PM which corresponds to a shooting volume that is only slightly above the mean.
+
+```{r Hourly_MR_Graph, echo=FALSE}
+ggplot(sum_ghr, aes(x=hour_occured, y=murder_rate, fill=murder_rate))+
+  geom_col()+
+  scale_fill_viridis_c(option="turbo")+
+  geom_hline(yintercept = mr_mean_ghr, color="blue")+
+  scale_y_continuous(breaks=sort(c(seq(min(sum_ghr$murder_rate),max(sum_ghr$murder_rate), length.out=5),mr_mean_ghr)))
+```
+
+
+---
+
+## Step 4: Add Bias Identification
+
+### Data Bias
+In the 17 years of data available, the number of shootings per year fluctuated greatly. In 2022 there were over 3 times the number of shootings as in 2019. The risk is that one of the more extreme years could skew the results. Below is a point chart of the number of shootings for each year.
+
+```{r Yearly_Shooting, echo=FALSE}
+ggplot(sum_gyr, aes(x=year_occured, y=shootings))+geom_point()
+```
+I chose to include the data for all years for two reasons. First, the difference between 2018 and 2019 or 2022 and 2006 wasn't dramatic. Secondly, the results didn't change dramatically when filtered out. To visualize this, a version of the initial table with color coded lines for the individual years is displayed below.
+
+```{r Monthly_Shooting_Spaghetti, echo=FALSE}
+ggplot(sum_gym, aes(x=month_occured, y=shootings)) + geom_line(aes(color=factor(year_occured))) +geom_smooth(method = 'loess', formula = y~x)
+```
+
+### Personal Bias
+This analysis focused on timing. I had my own personal assumption that most shootings occur at night, and the data supports this. I also assumed these same hours in the evening with high numbers of shootings would be more likely for a shooting to result in a fatality due to overwhelmed first responders and emergency rooms. This assumption was incorrect according to the data.
+
+The Geographic distribution could also be a source of personal bias for anyone familiar with New York City. While I have visited a couple of times, it wasn't interesting enough to learn about the reputations of different neighborhoods.
+
+Additionally, this data included age, sex, and race data in the PERP_AGE_GROUP, PERP_SEX, PERP_RACE, VIC_AGE_GROUP, VIC_SEX, VIC_RACE columns. Some records were based on incomplete reports where this information was listed as "UNKNOWN". While the values of these columns didn't factor into the analysis, records based on incomplete reports were removed.
+
+---
+
+## Bonus Charts and Analysis
+
+Here are some maps with the hourly and monthly shootings plotted on them.
+Overall, the deaths seem pretty evenly distributed among the shootings. 
+There doesn't seem to be any big obvious red clusters where I could easily speculate that one part of the city is under-served.
+
+Mostly, I like maps and wanted to plot the data to locations. That's why I included them.
+
+```{r nypd_geo_graphing, echo=FALSE}
+# Code for the geographic maps using the leaflet library
+# Color setting function
+pal <- colorFactor(c("green","#ff0000"), domain = c(0,1))
+# Build monthly map
+monthly_map <- leaflet() %>% 
+  # Map tile base
+  addTiles() %>%
+  addProviderTiles(providers$Stamen.Toner)%>%
+  setView(lng=-73.97, lat=40.77, zoom=10)%>%
+  # Data markers
+  #addHeatmap(data=hr_nested[[1]], lat=~Latitude, lng=~Longitude, blur = 5, max = 0.05, radius = 4, group = "heat")%>%
+  addCircleMarkers(data=mo_nested[[1]], lat=~Latitude, lng=~Longitude, stroke=FALSE, fillColor = ~pal(MF), color = ~pal(MF), radius=3, opacity = 1.0, group = "January")%>%
+  addCircleMarkers(data=mo_nested[[2]], lat=~Latitude, lng=~Longitude, stroke=FALSE, fillColor = ~pal(MF), color = ~pal(MF), radius=3, opacity = 1.0, group = "February")%>%
+  addCircleMarkers(data=mo_nested[[3]], lat=~Latitude, lng=~Longitude, stroke=FALSE, fillColor = ~pal(MF), color = ~pal(MF), radius=3, opacity = 1.0, group = "March")%>%
+  addCircleMarkers(data=mo_nested[[4]], lat=~Latitude, lng=~Longitude, stroke=FALSE, fillColor = ~pal(MF), color = ~pal(MF), radius=3, opacity = 1.0, group = "April")%>%
+  addCircleMarkers(data=mo_nested[[5]], lat=~Latitude, lng=~Longitude, stroke=FALSE, fillColor = ~pal(MF), color = ~pal(MF), radius=3, opacity = 1.0, group = "May")%>%
+  addCircleMarkers(data=mo_nested[[6]], lat=~Latitude, lng=~Longitude, stroke=FALSE, fillColor = ~pal(MF), color = ~pal(MF), radius=3, opacity = 1.0, group = "June")%>%
+  addCircleMarkers(data=mo_nested[[7]], lat=~Latitude, lng=~Longitude, stroke=FALSE, fillColor = ~pal(MF), color = ~pal(MF), radius=3, opacity = 1.0, group = "July")%>%
+  addCircleMarkers(data=mo_nested[[8]], lat=~Latitude, lng=~Longitude, stroke=FALSE, fillColor = ~pal(MF), color = ~pal(MF), radius=3, opacity = 1.0, group = "August")%>%
+  addCircleMarkers(data=mo_nested[[9]], lat=~Latitude, lng=~Longitude, stroke=FALSE, fillColor = ~pal(MF), color = ~pal(MF), radius=3, opacity = 1.0, group = "September")%>%
+  addCircleMarkers(data=mo_nested[[10]], lat=~Latitude, lng=~Longitude, stroke=FALSE, fillColor = ~pal(MF), color = ~pal(MF), radius=3, opacity = 1.0, group = "October")%>%
+  addCircleMarkers(data=mo_nested[[11]], lat=~Latitude, lng=~Longitude, stroke=FALSE, fillColor = ~pal(MF), color = ~pal(MF), radius=3, opacity = 1.0, group = "November")%>%
+  addCircleMarkers(data=mo_nested[[12]], lat=~Latitude, lng=~Longitude, stroke=FALSE, fillColor = ~pal(MF), color = ~pal(MF), radius=3, opacity = 1.0, group = "December")%>%
+  addLayersControl(baseGroups = c("January","February","March","April","May","June","July","August","September","October","November","December"), options = layersControlOptions(collapsed=FALSE) )
+
+# Build hourly map
+hourly_map <- leaflet() %>% 
+  # Map tile base
+  addTiles() %>%
+  addProviderTiles(providers$Stamen.Toner)%>%
+  setView(lng=-73.97, lat=40.77, zoom=10)%>%
+  # Data markers
+  addCircleMarkers(data=hr_nested[[1]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "12-1am")%>%
+  addCircleMarkers(data=hr_nested[[2]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "1-2am")%>%
+  addCircleMarkers(data=hr_nested[[3]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "2-3am")%>%
+  addCircleMarkers(data=hr_nested[[4]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "3-4am")%>%
+  addCircleMarkers(data=hr_nested[[5]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "4-5am")%>%
+  addCircleMarkers(data=hr_nested[[6]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "5-6am")%>%
+  addCircleMarkers(data=hr_nested[[7]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "6-7am")%>%
+  addCircleMarkers(data=hr_nested[[8]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "7-8am")%>%
+  addCircleMarkers(data=hr_nested[[9]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "8-9am")%>%
+  addCircleMarkers(data=hr_nested[[10]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "9-10am")%>%
+  addCircleMarkers(data=hr_nested[[11]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "10-11am")%>%
+  addCircleMarkers(data=hr_nested[[12]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "11-12pm")%>%
+  addCircleMarkers(data=hr_nested[[13]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "12-1pm")%>%
+  addCircleMarkers(data=hr_nested[[14]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "1-2pm")%>%
+  addCircleMarkers(data=hr_nested[[15]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "2-3pm")%>%
+  addCircleMarkers(data=hr_nested[[16]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "3-4pm")%>%
+  addCircleMarkers(data=hr_nested[[17]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "4-5pm")%>%
+  addCircleMarkers(data=hr_nested[[18]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "5-6pm")%>%
+  addCircleMarkers(data=hr_nested[[19]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "6-7pm")%>%
+  addCircleMarkers(data=hr_nested[[20]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "7-8pm")%>%
+  addCircleMarkers(data=hr_nested[[21]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "8-9pm")%>%
+  addCircleMarkers(data=hr_nested[[22]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "9-10pm")%>%
+  addCircleMarkers(data=hr_nested[[23]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "10-11pm")%>%
+  addCircleMarkers(data=hr_nested[[24]], lat=~Latitude, lng=~Longitude, stroke=TRUE, fillColor = ~pal(MF), color = ~pal(MF), radius=1, opacity = 1, group = "11-12am")%>%
+  addLayersControl(baseGroups = c("12-1am","1-2am","2-3am","3-4am","4-5am","5-6am","6-7am","7-8am","8-9am","9-10am","10-11am","11-12pm","12-1pm","1-2pm","2-3pm","3-4pm","4-5pm","5-6pm","6-7pm","7-8pm","8-9pm","9-10pm","10-11pm","11-12am"), options = layersControlOptions(collapsed=FALSE) )
+
+```
+
+### Geographic distribution of Hourly Shootings
+
+With more data, this map could be overlayed on traffic patterns and the locations of critical resources such as hospitals. Perhaps there's a correlation between deaths and proximity to emergency rooms, or traffic congestion in the routes to reach them. 
+
+```{r, echo=FALSE}
+hourly_map
+```
+
+### Geographic distribution of Monthly Shootings
+
+With more data, this could correlate to something like road conditions. Mostly, this is here because I like maps.
+
+```{r, echo=FALSE}
+monthly_map
+```
+
+
