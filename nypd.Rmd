@@ -1,9 +1,9 @@
 ---
 title: 'NYPD Project: The Best Time to Get Shot'
 output:
-  pdf_document: default
   html_document:
     df_print: paged
+  pdf_document: default
 ---
 
 ```{r strange_errors, echo=FALSE}
@@ -11,6 +11,10 @@ output:
 # it should be ignored
 m <- 2
 ```
+
+### This project uses the packages tidyverse, scales, leaflet, leaflet.extras, leaflet.providers. Please make sure they are installed before trying to knit this project.
+
+---
 
 What was __the best time to get shot__ in City That Never Sleeps? We are about to
 find the answer by looking at the NYPD's data, and it might not be when you
