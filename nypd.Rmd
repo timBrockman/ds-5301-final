@@ -1,9 +1,9 @@
 ---
-title: 'NYPD Project: The Best Time to Get Shot'
+title: 'NYPD Project: Killing Time in NYC'
 output:
+  pdf_document: default
   html_document:
     df_print: paged
-  pdf_document: default
 ---
 
 ```{r strange_errors, echo=FALSE}
