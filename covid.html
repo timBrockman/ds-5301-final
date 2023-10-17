@@ -1635,15 +1635,10 @@ any pandemics of the past. We are going to look at the different
 counties of Massachusetts and plot both the number of cases and deaths
 over time. Additionally, we will try to model and predict the number of
 cases and deaths in the state overall.</p>
+<div id="question-of-interest-can-we-model-and-predict-relationship-between-the-cases-and-deaths-over-time-in-massachusetts" class="section level4">
+<h4>Question of interest: Can we model and predict relationship between
+the cases and deaths over time in Massachusetts?</h4>
 </div>
-<div id="we-will-discover-which-counties-have-the" class="section level3">
-<h3>We will discover which counties have the:</h3>
-<ul>
-<li>highest growth in cases</li>
-<li>most cases per population</li>
-<li>highest growth in deaths</li>
-<li>most deaths per population</li>
-</ul>
 </div>
 <div id="this-project-is-broken-down-into-4-steps." class="section level3">
 <h3>This project is broken down into 4 steps.</h3>
@@ -1673,7 +1668,7 @@ time_series_covid19_deaths_US.csv.</li>
 <h4>A. Install and load the libraries</h4>
 <pre><code>## 
 ## The downloaded binary packages are in
-##  /var/folders/h4/0yj9g1kx5bvgbvsm3b1209tr0000gn/T//RtmpmxpOSt/downloaded_packages</code></pre>
+##  /var/folders/h4/0yj9g1kx5bvgbvsm3b1209tr0000gn/T//RtmpoLLtn5/downloaded_packages</code></pre>
 <pre><code>## ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
 ## ✔ dplyr     1.1.3     ✔ readr     2.1.4
 ## ✔ forcats   1.0.0     ✔ stringr   1.5.0
@@ -1885,6 +1880,14 @@ data.</p>
 {"columns":[{"label":["Admin2"],"name":[1],"type":["chr"],"align":["left"]},{"label":["Max_Deaths"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["Total_Deaths"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["Max_Cases"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["Total_Cases"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["Population"],"name":[6],"type":["dbl"],"align":["right"]}],"data":[{"1":"Barnstable","2":"785","3":"447242","4":"49617","5":"23514236","6":"212990"},{"1":"Berkshire","2":"480","3":"276606","4":"35456","5":"15223406","6":"124944"},{"1":"Bristol","2":"2555","3":"1619263","4":"182344","5":"98339486","6":"565217"},{"1":"Dukes","2":"0","3":"0","4":"0","5":"0","6":"17332"},{"1":"Essex","2":"3272","3":"2235421","4":"256987","5":"140031284","6":"789034"},{"1":"Franklin","2":"198","3":"108143","4":"14736","5":"6453660","6":"70180"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
   </script>
 </div>
+</div>
+<div id="conclusion" class="section level3">
+<h3>Conclusion</h3>
+<p>Our prediction managed to capture the low correlation of Nantucket
+County, and followed the general pattern of increase over time.
+Unfortunately, it didn’t entirely reflect the extreme increase of
+Middlesex County. It would be worth investigating what caused that
+county to stand out.</p>
 <hr />
 </div>
 </div>

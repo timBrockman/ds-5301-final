@@ -1,9 +1,9 @@
 ---
 title: 'COVID-19 Project: Mass. Spread of COVID-19'
 output:
-  pdf_document: default
   html_document:
     df_print: paged
+  pdf_document: default
 ---
 
 ```{r strange_errors, echo=FALSE}
@@ -18,11 +18,7 @@ m <- 2
 
 COVID-19 was tracked on a global scale likely with more detail than any pandemics of the past. We are going to look at the different counties of Massachusetts and plot both the number of cases and deaths over time. Additionally, we will try to model and predict the number of cases and deaths in the state overall.
 
-### We will discover which counties have the:
-- highest growth in cases
-- most cases per population
-- highest growth in deaths 
-- most deaths per population
+#### Question of interest: Can we model and predict relationship between the cases and deaths over time in Massachusetts?
 
 
 ### This project is broken down into 4 steps.
@@ -179,6 +175,8 @@ head(Mass_County)
        
 ```
 
+### Conclusion
+Our prediction managed to capture the low correlation of Nantucket County, and followed the general pattern of increase over time. Unfortunately, it didn't entirely reflect the extreme increase of Middlesex County. It would be worth investigating what caused that county to stand out.
 
 ---
 
