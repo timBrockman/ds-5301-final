@@ -1,0 +1,191 @@
+---
+title: 'COVID-19 Project: Mass. Spread of COVID-19'
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r strange_errors, echo=FALSE}
+# this block seems to suppress some strange markdown parsing during knit 
+# it should be ignored
+m <- 2
+```
+
+### This project uses the packages tidyverse, which now contains lubridate. Please make sure it is installed before trying to knit this project.
+
+---
+
+COVID-19 was tracked on a global scale likely with more detail than any pandemics of the past. We are going to look at the different counties of Massachusetts and plot both the number of cases and deaths over time. Additionally, we will try to model and predict the number of cases and deaths in the state overall.
+
+### We will discover which counties have the:
+- highest growth in cases
+- most cases per population
+- highest growth in deaths 
+- most deaths per population
+
+
+### This project is broken down into 4 steps.
+1. Get the data
+2. Convert the data into something useful
+3. Create a model and present the data
+4. Identify possible biases
+
+
+## Step 1: Import data in a way that's reproducible
+
+ - Install all the packages used in this project and load the corresponding libraries
+ - Use the tidyverse package to read the csv directly from the source
+ - The data source is provided by Johns Hopkins University on GitHub at: `https://github.com/CSSEGISandData/COVID-19/tree/master/csse_covid_19_data/csse_covid_19_time_series`
+ - The exact directory for the download is currently: `https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/` and the individual files are: time_series_covid19_confirmed_US.csv, and time_series_covid19_deaths_US.csv.
+
+#### A. Install and load the libraries
+```{r install_libraries, echo=FALSE, warning=FALSE}
+install.packages(c("tidyverse"), repos = "http://cran.us.r-project.org")
+#, "scales", "leaflet","leaflet.extras","leaflet.providers"), repos = "http://cran.us.r-project.org")
+#library(leaflet)
+#library(leaflet.extras)
+#library(leaflet.providers)
+library(tidyverse)
+#library(scales)
+```
+
+#### B. - D. Use the Tidyverse package to Read the CSV directly from the data sources.
+`https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv`
+`https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_US.csv`
+
+```{r get_covid, echo=FALSE}
+#confirmed_global <- read_csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv")
+#deaths_global <- read_csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv")
+confirmed_us <- read_csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv")
+deaths_us <- read_csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_US.csv")
+#mass_density <-read_csv("https://raw.githubusercontent.com/timBrockman/dtsa-5301/master/mass_density.csv")
+```
+
+## Step 2. Convert the Data into something usefull.
+
+#### Preview the data.
+
+```{r heads, echo=FALSE}
+#head(confirmed_global)
+#sort(colnames(confirmed_global), decreasing = TRUE)
+#head(deaths_global)
+#sort(colnames(deaths_global), decreasing = TRUE)
+
+head(confirmed_us)
+head(deaths_us)
+#head(mass_density)
+```
+
+#### Pivot the data so each day isn't a separate column.
+
+```{r pivot_data}
+cases <- confirmed_us %>%
+  pivot_longer(cols = -c(UID:Combined_Key), names_to = "date", values_to = "Cases")%>%
+  select(-c(iso2, iso3, code3, FIPS, UID, Country_Region))%>%
+  mutate(date = mdy(date))
+
+summary(cases)
+
+
+deaths <- deaths_us %>%
+  pivot_longer(cols = -c(UID:Population), names_to = "date", values_to = "deaths")%>%
+  select(-c(iso2, iso3, code3, FIPS, UID, Country_Region))%>%
+  mutate(date = mdy(date))
+
+summary(deaths)
+
+#summary(mass_density)
+
+```
+
+#### Initial Filtering and Joins 
+Filter the other states' data out, then join the data for Cases and Deaths in Massachusetts.
+
+```{r Mass_Counties, echo=FALSE}
+Mass_Cases <- cases %>%
+  filter(Province_State == "Massachusetts")#%>%
+#  group_by(Admin2)
+
+Mass_Deaths <- deaths %>%
+  filter(Province_State == "Massachusetts")#%>%
+#  group_by(Admin2)
+
+All_Mass <- Mass_Cases %>% 
+  full_join(Mass_Deaths)
+
+```
+
+#### More Mutation and Filtering
+Because of the population correlation, mutate the Mass rows to add deaths per 1000 and cases per 1000. While we're at it, create a couple other date formats and remove the ... from Long. Additionally, we will filter for 0 Population as this will cause divide by zero errors.
+
+```{r Mass_Mutate, echo=FALSE}
+Mass <- All_Mass %>%
+  mutate(deaths_per_k= deaths * 1000 / Population, cases_per_k= Cases * 1000 / Population, month_year = format_ISO8601(date, precision="ym"), Lng = Long_, month= month(date))%>%filter(Population > 0) 
+
+summary(Mass)
+head(Mass)
+```
+
+## Step 3. Analyze the data, create a model and present everything
+
+
+#### Quick Correlation Check
+To begin with, we do a quick correlation analysis to try to get a better sense of the relationship between the columns of data. I'm looking for correlations between the deaths, cases, and the population.
+
+```{r correlations, echo=FALSE}
+'Deaths & Population: ' 
+cor(Mass$deaths, Mass$Population)
+'Cases & Population: '
+cor(Mass$Cases, Mass$Population)
+'Cases & Deaths: '
+cor(Mass$Cases, Mass$deaths)
+'Cases/1000 & Deaths/1000: '
+cor(Mass$cases_per_k, Mass$deaths_per_k)
+```
+
+#### Build a model.
+We will build a model based on cases per 1000 and deaths per 1000, output the summary, then add the predictions to the Mass. county data.
+
+```{r Mass_Model, echo=FALSE}
+Mass_Model <- lm(cases_per_k ~ deaths_per_k, Mass)
+summary(Mass_Model)
+Mass_Pred <- Mass %>%
+  mutate(Prediction = predict(Mass_Model))
+```
+
+
+#### Plot Predictions for the individual Counties.
+
+```{r Plot_County_Predictions, echo=FALSE}
+ggplot(Mass_Pred, aes(x=date, y=Prediction))+geom_point(aes(color=Admin2))
+```
+
+#### Plot the Actual County Data for comparison
+
+```{r Plot_County_Data, echo=FALSE}
+ggplot(Mass_Pred, aes(x=date, y=Cases))+geom_point(aes(color=Admin2))
+```
+
+#### Group the Mass. data by county.
+
+```{r Group_County, echo=FALSE}
+Mass_County <- Mass %>%
+  group_by(Admin2)%>%
+  summarize(Max_Deaths=max(deaths), Total_Deaths = sum(deaths),Max_Cases = max(Cases), Total_Cases = sum(Cases), Population = max(Population))
+
+summary(Mass_County)
+head(Mass_County)
+       
+```
+
+
+---
+
+## Step 4: Add Bias Identification
+
+### Data Bias
+Massachusetts is one state in the United States, out of the entire planet may not be an accurate sample. It is difficult to say how accurate the data itself is or how consistent it is from county to county. Furthermore, as more was known about the COVID-19 virus, methods of accurately identifying cases and deaths are likely to improve. This may skew the data.
+
+### Personal Bias
+On a personal note, I chose to examine only Massachusetts. I did so based on the basis of my perception of Massachusetts as a place with cutting edge medicine and unbiased data, with both rural and very urban areas. This may be have be completely wrong.
